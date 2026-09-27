@@ -1,0 +1,379 @@
+import os
+import zipfile
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+os.makedirs("/root/.kaggle", exist_ok=True)
+
+if not os.path.exists("/root/.kaggle/kaggle.json"):
+    from google.colab import files
+    uploaded = files.upload()
+    if "kaggle.json" in uploaded:
+        os.rename("kaggle.json", "/root/.kaggle/kaggle.json")
+
+os.chmod("/root/.kaggle/kaggle.json", 600)
+
+!kaggle datasets download -d sobhanmoosavi/us-accidents
+
+with zipfile.ZipFile("us-accidents.zip", "r") as zip_ref:
+    zip_ref.extractall("us_accidents")
+
+files_list = os.listdir("us_accidents")
+print("Dataset Files:")
+print(files_list)
+
+csv_file = [f for f in files_list if f.lower().endswith(".csv")][0]
+
+df = pd.read_csv("us_accidents/" + csv_file, low_memory=False)
+
+print("\nFirst 5 Rows:")
+display(df.head())
+
+print("\nDataset Shape:")
+print(df.shape)
+
+print("\nColumn Names:")
+print(df.columns.tolist())
+
+print("\nData Types:")
+print(df.dtypes)
+
+print("\nMissing Values:")
+print(df.isnull().sum().sort_values(ascending=False).head(20))
+
+print("\nDuplicate Rows:")
+print(df.duplicated().sum())
+
+df = df.drop_duplicates().copy()
+
+df["Start_Time"] = pd.to_datetime(df["Start_Time"], errors="coerce")
+
+df["Hour"] = df["Start_Time"].dt.hour
+
+df["Day"] = df["Start_Time"].dt.day_name()
+
+df["Month"] = df["Start_Time"].dt.month_name()
+
+df["Year"] = df["Start_Time"].dt.year
+
+def get_time_period(hour):
+    if 5 <= hour < 12:
+        return "Morning"
+    elif 12 <= hour < 17:
+        return "Afternoon"
+    elif 17 <= hour < 21:
+        return "Evening"
+    else:
+        return "Night"
+
+df["Time_of_Day"] = df["Hour"].apply(get_time_period)
+
+print("\nTime of Day Distribution:")
+print(df["Time_of_Day"].value_counts())
+
+plt.figure(figsize=(9,5))
+sns.countplot(
+    data=df,
+    x="Time_of_Day",
+    order=["Morning", "Afternoon", "Evening", "Night"]
+)
+plt.title("Accidents by Time of Day")
+plt.xlabel("Time of Day")
+plt.ylabel("Number of Accidents")
+plt.show()
+
+hourly = df["Hour"].value_counts().sort_index()
+
+plt.figure(figsize=(12,5))
+plt.plot(hourly.index, hourly.values, marker="o")
+plt.title("Accidents by Hour of Day")
+plt.xlabel("Hour of Day")
+plt.ylabel("Number of Accidents")
+plt.xticks(range(24))
+plt.grid(True)
+plt.show()
+
+weather_columns = [
+    "Weather_Condition",
+    "Temperature(F)",
+    "Visibility(mi)",
+    "Wind_Speed(mph)",
+    "Humidity(%)",
+    "Pressure(in)",
+    "Precipitation(in)"
+]
+
+available_weather = [c for c in weather_columns if c in df.columns]
+
+print("\nWeather Columns:")
+print(available_weather)
+
+if "Weather_Condition" in df.columns:
+    weather_counts = df["Weather_Condition"].value_counts().head(15)
+
+    print("\nTop Weather Conditions:")
+    print(weather_counts)
+
+    plt.figure(figsize=(12,6))
+    sns.barplot(
+        x=weather_counts.values,
+        y=weather_counts.index
+    )
+    plt.title("Top Weather Conditions During Accidents")
+    plt.xlabel("Number of Accidents")
+    plt.ylabel("Weather Condition")
+    plt.show()
+
+road_columns = [
+    "Sunrise_Sunset",
+    "Civil_Twilight",
+    "Nautical_Twilight",
+    "Astronomical_Twilight"
+]
+
+available_road = [c for c in road_columns if c in df.columns]
+
+print("\nRoad and Visibility Related Factors:")
+print(available_road)
+
+if "Sunrise_Sunset" in df.columns:
+    print("\nAccidents by Sunrise/Sunset:")
+    print(df["Sunrise_Sunset"].value_counts())
+
+    plt.figure(figsize=(7,5))
+    sns.countplot(
+        data=df,
+        x="Sunrise_Sunset"
+    )
+    plt.title("Accidents by Daylight Condition")
+    plt.xlabel("Daylight Condition")
+    plt.ylabel("Number of Accidents")
+    plt.show()
+
+if "Visibility(mi)" in df.columns:
+    visibility = df["Visibility(mi)"].dropna()
+
+    plt.figure(figsize=(10,5))
+    sns.histplot(visibility, bins=30)
+    plt.title("Accidents by Visibility")
+    plt.xlabel("Visibility (miles)")
+    plt.ylabel("Number of Accidents")
+    plt.xlim(0, min(30, visibility.max()))
+    plt.show()
+
+if "Temperature(F)" in df.columns:
+    plt.figure(figsize=(10,5))
+    sns.histplot(df["Temperature(F)"].dropna(), bins=30)
+    plt.title("Accidents by Temperature")
+    plt.xlabel("Temperature (F)")
+    plt.ylabel("Number of Accidents")
+    plt.show()
+
+if "Severity" in df.columns:
+    print("\nAccident Severity Distribution:")
+    print(df["Severity"].value_counts().sort_index())
+
+    plt.figure(figsize=(8,5))
+    sns.countplot(
+        data=df,
+        x="Severity",
+        order=sorted(df["Severity"].dropna().unique())
+    )
+    plt.title("Accident Severity Distribution")
+    plt.xlabel("Severity")
+    plt.ylabel("Number of Accidents")
+    plt.show()
+
+if "State" in df.columns:
+    state_counts = df["State"].value_counts().head(15)
+
+    print("\nTop States with Most Accidents:")
+    print(state_counts)
+
+    plt.figure(figsize=(12,6))
+    sns.barplot(
+        x=state_counts.values,
+        y=state_counts.index
+    )
+    plt.title("Top 15 Accident Hotspots by State")
+    plt.xlabel("Number of Accidents")
+    plt.ylabel("State")
+    plt.show()
+
+if "City" in df.columns:
+    city_counts = df["City"].value_counts().head(20)
+
+    print("\nTop 20 Accident Hotspot Cities:")
+    print(city_counts)
+
+    plt.figure(figsize=(12,7))
+    sns.barplot(
+        x=city_counts.values,
+        y=city_counts.index
+    )
+    plt.title("Top 20 Accident Hotspot Cities")
+    plt.xlabel("Number of Accidents")
+    plt.ylabel("City")
+    plt.show()
+
+if "Start_Lat" in df.columns and "Start_Lng" in df.columns:
+    hotspot_data = df[
+        ["Start_Lat", "Start_Lng"]
+    ].dropna()
+
+    hotspot_data = hotspot_data.sample(
+        min(20000, len(hotspot_data)),
+        random_state=42
+    )
+
+    plt.figure(figsize=(12,8))
+    plt.scatter(
+        hotspot_data["Start_Lng"],
+        hotspot_data["Start_Lat"],
+        s=2,
+        alpha=0.3
+    )
+    plt.title("Accident Hotspots")
+    plt.xlabel("Longitude")
+    plt.ylabel("Latitude")
+    plt.show()
+
+if "Day" in df.columns:
+    day_order = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday"
+    ]
+
+    day_counts = df["Day"].value_counts().reindex(day_order)
+
+    plt.figure(figsize=(10,5))
+    sns.barplot(
+        x=day_counts.index,
+        y=day_counts.values
+    )
+    plt.title("Accidents by Day of Week")
+    plt.xlabel("Day")
+    plt.ylabel("Number of Accidents")
+    plt.xticks(rotation=30)
+    plt.show()
+
+if "Month" in df.columns:
+    month_order = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December"
+    ]
+
+    month_counts = df["Month"].value_counts().reindex(month_order)
+
+    plt.figure(figsize=(12,5))
+    sns.barplot(
+        x=month_counts.index,
+        y=month_counts.values
+    )
+    plt.title("Accidents by Month")
+    plt.xlabel("Month")
+    plt.ylabel("Number of Accidents")
+    plt.xticks(rotation=45)
+    plt.show()
+
+numeric_columns = [
+    "Severity",
+    "Temperature(F)",
+    "Humidity(%)",
+    "Pressure(in)",
+    "Visibility(mi)",
+    "Wind_Speed(mph)",
+    "Precipitation(in)"
+]
+
+available_numeric = [
+    c for c in numeric_columns
+    if c in df.columns
+]
+
+if len(available_numeric) > 1:
+    correlation = df[available_numeric].corr()
+
+    print("\nCorrelation Matrix:")
+    display(correlation)
+
+    plt.figure(figsize=(10,7))
+    sns.heatmap(
+        correlation,
+        annot=True,
+        fmt=".2f"
+    )
+    plt.title("Correlation Between Accident and Weather Factors")
+    plt.show()
+
+if "Weather_Condition" in df.columns and "Severity" in df.columns:
+    weather_severity = pd.crosstab(
+        df["Weather_Condition"],
+        df["Severity"]
+    ).sort_values(
+        by=df["Severity"].unique().tolist(),
+        ascending=False
+    ).head(15)
+
+    print("\nWeather Condition vs Accident Severity:")
+    display(weather_severity)
+
+if "Time_of_Day" in df.columns and "Severity" in df.columns:
+    time_severity = pd.crosstab(
+        df["Time_of_Day"],
+        df["Severity"]
+    )
+
+    print("\nTime of Day vs Accident Severity:")
+    display(time_severity)
+
+    plt.figure(figsize=(10,6))
+    sns.heatmap(
+        time_severity,
+        annot=True,
+        fmt="d"
+    )
+    plt.title("Time of Day vs Accident Severity")
+    plt.xlabel("Severity")
+    plt.ylabel("Time of Day")
+    plt.show()
+
+print("\nFinal Analysis:")
+print("Total accidents:", len(df))
+
+if "State" in df.columns:
+    print("Top accident hotspot state:", df["State"].value_counts().idxmax())
+
+if "City" in df.columns:
+    print("Top accident hotspot city:", df["City"].value_counts().idxmax())
+
+if "Weather_Condition" in df.columns:
+    print("Most common weather condition:", df["Weather_Condition"].value_counts().idxmax())
+
+if "Time_of_Day" in df.columns:
+    print("Most common accident time:", df["Time_of_Day"].value_counts().idxmax())
+
+if "Day" in df.columns:
+    print("Most common accident day:", df["Day"].value_counts().idxmax())
+
+df.to_csv("Task_05_US_Accidents_Analysis.csv", index=False)
+
+print("\nCleaned and analyzed dataset saved as:")
+print("Task_05_US_Accidents_Analysis.csv")
