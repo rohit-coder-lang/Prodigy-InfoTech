@@ -1,0 +1,198 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import requests
+import io
+import re
+from wordcloud import WordCloud
+
+api_url = "https://api.github.com/repos/Prodigy-InfoTech/data-science-datasets/contents/Task%204"
+
+response = requests.get(api_url)
+response.raise_for_status()
+files = response.json()
+
+csv_files = [file for file in files if file["name"].lower().endswith((".csv", ".txt"))]
+
+if not csv_files:
+    raise FileNotFoundError("Task 4 dataset file not found on GitHub.")
+
+file_info = csv_files[0]
+file_url = file_info["download_url"]
+file_name = file_info["name"]
+
+print("Dataset:", file_name)
+
+data = requests.get(file_url).content
+
+try:
+    df = pd.read_csv(io.BytesIO(data))
+except:
+    df = pd.read_csv(io.BytesIO(data), sep=None, engine="python")
+
+print("\nFirst 5 Rows:")
+display(df.head())
+
+print("\nDataset Shape:")
+print(df.shape)
+
+print("\nColumn Names:")
+print(df.columns.tolist())
+
+print("\nData Types:")
+print(df.dtypes)
+
+print("\nMissing Values:")
+print(df.isnull().sum())
+
+print("\nDuplicate Rows:")
+print(df.duplicated().sum())
+
+df = df.drop_duplicates().copy()
+
+for col in df.columns:
+    if df[col].dtype == "object":
+        df[col] = df[col].fillna(df[col].mode()[0] if not df[col].mode().empty else "")
+    else:
+        df[col] = df[col].fillna(df[col].median())
+
+print("\nDataset After Cleaning:")
+print(df.shape)
+
+text_columns = []
+for col in df.columns:
+    if df[col].dtype == "object":
+        avg_length = df[col].astype(str).str.len().mean()
+        if avg_length > 20:
+            text_columns.append(col)
+
+if not text_columns:
+    text_columns = [col for col in df.columns if df[col].dtype == "object"]
+
+print("\nText Columns:")
+print(text_columns)
+
+text_col = text_columns[0]
+
+print("\nSelected Text Column:")
+print(text_col)
+
+def sentiment(text):
+    text = str(text).lower()
+
+    positive_words = [
+        "good", "great", "excellent", "amazing", "awesome",
+        "love", "loved", "happy", "best", "wonderful",
+        "fantastic", "positive", "nice", "like", "liked"
+    ]
+
+    negative_words = [
+        "bad", "worst", "hate", "hated", "sad", "poor",
+        "terrible", "awful", "horrible", "negative",
+        "disappointed", "disappointing", "angry", "dislike"
+    ]
+
+    positive_count = sum(len(re.findall(r"\b" + word + r"\b", text)) for word in positive_words)
+    negative_count = sum(len(re.findall(r"\b" + word + r"\b", text)) for word in negative_words)
+
+    if positive_count > negative_count:
+        return "Positive"
+    elif negative_count > positive_count:
+        return "Negative"
+    else:
+        return "Neutral"
+
+df["Sentiment"] = df[text_col].apply(sentiment)
+
+print("\nSentiment Distribution:")
+print(df["Sentiment"].value_counts())
+
+plt.figure(figsize=(8,5))
+sns.countplot(data=df, x="Sentiment")
+plt.title("Sentiment Distribution")
+plt.xlabel("Sentiment")
+plt.ylabel("Number of Posts")
+plt.show()
+
+sentiment_percentage = df["Sentiment"].value_counts(normalize=True) * 100
+
+print("\nSentiment Percentage:")
+print(sentiment_percentage.round(2))
+
+plt.figure(figsize=(7,7))
+plt.pie(
+    sentiment_percentage.values,
+    labels=sentiment_percentage.index,
+    autopct="%1.1f%%"
+)
+plt.title("Sentiment Percentage")
+plt.show()
+
+if "Sentiment" in df.columns:
+    plt.figure(figsize=(8,5))
+    sns.countplot(data=df, x="Sentiment", hue="Sentiment", legend=False)
+    plt.title("Public Opinion Based on Sentiment")
+    plt.xlabel("Sentiment")
+    plt.ylabel("Number of Posts")
+    plt.show()
+
+all_text = " ".join(df[text_col].astype(str))
+
+wordcloud = WordCloud(
+    width=1200,
+    height=600,
+    background_color="white",
+    max_words=100
+).generate(all_text)
+
+plt.figure(figsize=(14,7))
+plt.imshow(wordcloud, interpolation="bilinear")
+plt.axis("off")
+plt.title("Most Frequent Words in Social Media Data")
+plt.show()
+
+positive_text = " ".join(
+    df.loc[df["Sentiment"] == "Positive", text_col].astype(str)
+)
+
+negative_text = " ".join(
+    df.loc[df["Sentiment"] == "Negative", text_col].astype(str)
+)
+
+if positive_text.strip():
+    positive_cloud = WordCloud(
+        width=1000,
+        height=500,
+        background_color="white",
+        max_words=80
+    ).generate(positive_text)
+
+    plt.figure(figsize=(12,6))
+    plt.imshow(positive_cloud, interpolation="bilinear")
+    plt.axis("off")
+    plt.title("Positive Sentiment Words")
+    plt.show()
+
+if negative_text.strip():
+    negative_cloud = WordCloud(
+        width=1000,
+        height=500,
+        background_color="white",
+        max_words=80
+    ).generate(negative_text)
+
+    plt.figure(figsize=(12,6))
+    plt.imshow(negative_cloud, interpolation="bilinear")
+    plt.axis("off")
+    plt.title("Negative Sentiment Words")
+    plt.show()
+
+print("\nFinal Result:")
+print("Social media sentiment analysis completed successfully.")
+print("Public opinion has been analyzed using Positive, Negative and Neutral sentiments.")
+print("Sentiment patterns have been visualized using charts and word clouds.")
+
+df.to_csv("Task_04_Sentiment_Analysis.csv", index=False)
+
+print("\nCleaned dataset saved as: Task_04_Sentiment_Analysis.csv")
